@@ -15,6 +15,7 @@ type Document = {
   name: string;
   url: string;
   fields: Field[];
+  documentType: string;
 };
 
 // Add passport field definitions at the top
@@ -35,6 +36,7 @@ function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentDocType, setCurrentDocType] = useState<string>('');
 
   const fetchRecentDocuments = async () => {
     setError(null);
@@ -53,7 +55,8 @@ function App() {
         fields: doc.fields.map((field: any) => ({
           key: field.key,
           value: field.value
-        }))
+        })),
+        documentType: doc.document_type || 'Unknown'
       }));
       
       setRecentDocs(transformedDocs);
@@ -98,6 +101,7 @@ function App() {
 
       const data = await response.json();
       let parsedFields: any;
+      let documentType = 'Unknown';
 
       if ('raw_output' in data.fields) {
         // Clean ```json ... ``` wrapping
@@ -107,12 +111,14 @@ function App() {
         try {
           const parsed = JSON.parse(cleaned);
           parsedFields = parsed.document_content ?? parsed;
+          documentType = data.document_type || parsed.document_type || 'Passport';
         } catch (e) {
           console.error("JSON parse error:", e);
           parsedFields = { raw_output: raw }; // fallback
         }
       } else {
         parsedFields = data.fields.document_content ?? data.fields;
+        documentType = data.document_type || 'Passport';
       }
 
       // Create a complete set of fields with all expected fields
@@ -131,9 +137,11 @@ function App() {
         name: data.filename || `Document ${recentDocs.length + 1}`,
         url: documentUrl!,
         fields: completeFields,
+        documentType
       };
 
       setFields(completeFields);
+      setCurrentDocType(documentType);
       setRecentDocs([newDoc, ...recentDocs]);
     } catch (err) {
       console.error(err);
@@ -202,6 +210,9 @@ function App() {
       // First find the document in our local state to get its fields
       const doc = recentDocs.find((d) => d.id === id);
       if (!doc) return;
+
+      // Set the document type
+      setCurrentDocType(doc.documentType);
 
       // Create a complete set of fields, including empty ones
       const existingFields = doc.fields.reduce((acc, field) => {
@@ -298,7 +309,11 @@ function App() {
           </p>
         )}
       </div>
-      <ExtractedFieldsPanel fields={fields} onUpdateField={handleUpdateField} />
+      <ExtractedFieldsPanel 
+        fields={fields} 
+        documentType={currentDocType || 'No document loaded'} 
+        onUpdateField={handleUpdateField} 
+      />
     </div>
   );
 }

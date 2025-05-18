@@ -13,6 +13,7 @@ class Document(Base):
     content_type = Column(String, nullable=False)
     upload_time = Column(DateTime, default=datetime.utcnow)
     file_blob = Column(LargeBinary, nullable=False)
+    document_type = Column(String, nullable=True)
 
     fields = relationship("Field", back_populates="document", cascade="all, delete-orphan")
 
