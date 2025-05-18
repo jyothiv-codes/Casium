@@ -242,6 +242,14 @@ async def classify_document(file: UploadFile = File(...), db: Session = Depends(
             if field in field_data and field_data[field]:
                 field_data[field] = convert_date_to_standard_format(field_data[field])
 
+        # If document type is unknown, return the data without storing in database
+        if doc_type == "unknown":
+            logger.info("Document type is unknown, skipping database storage")
+            return {
+                "document_type": doc_type,
+                "fields": field_data
+            }
+
         logger.info(f"Creating document record with type: '{doc_type}'")
         doc_record = Document(
             filename=file.filename,

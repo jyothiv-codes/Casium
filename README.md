@@ -27,6 +27,15 @@ A modern React and FastAPI application for viewing and editing extracted documen
   - First Name
   - Last Name
 
+### Document Handling
+- Automatic document type detection and classification
+- Support for known document types (passport, driver's license, EAD card)
+- Graceful handling of unknown document types:
+  - Documents not matching known types are classified as "unknown"
+  - Fields are extracted but not stored in the database
+  - Extracted information is displayed to the user for reference
+  - Unknown documents are excluded from the recent documents list
+
 ### Document Field Editing
 - Interactive field editing interface with validation
 - Real-time field updates
@@ -82,10 +91,26 @@ A modern React and FastAPI application for viewing and editing extracted documen
 
 ## Getting Started
 
+### Prerequisites
+- Python 3.9 or higher
+- Node.js 16 or higher
+- npm or yarn
+- Google Cloud account for Gemini API access
+
 ### Backend Setup
 ```bash
+# Create and activate a virtual environment (recommended)
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
 # Install dependencies
 pip install -r requirements.txt
+
+# Set up Google Cloud API Key
+# 1. Visit https://makersuite.google.com/app/apikey
+# 2. Create a new API key if you don't have one
+# 3. Create a .env file in the root directory with:
+GOOGLE_API_KEY=your_gemini_api_key_here
 
 # Initialize the database (first time setup)
 python init_db.py
@@ -94,12 +119,6 @@ python init_db.py
 python -m uvicorn doc_classifier:app --reload
 ```
 The server will be available at `http://127.0.0.1:8000`
-
-### Environment Variables
-Create a `.env` file in the root directory with:
-```
-GOOGLE_API_KEY=your_gemini_api_key_here
-```
 
 ### Frontend Setup
 ```bash
@@ -113,6 +132,17 @@ npm install
 npm start
 ```
 The application will be available at `http://localhost:3000`
+
+### Testing the Setup
+1. Open `http://localhost:3000` in your browser
+2. Upload a supported document (passport, driver's license, or EAD card)
+3. The system will automatically classify the document and extract fields
+4. You can view and edit the extracted fields in the right panel
+
+### Troubleshooting
+- If you see a "Address already in use" error, make sure no other instance of the server is running
+- If document extraction fails, verify your GOOGLE_API_KEY is set correctly in the .env file
+- For any frontend errors, check the browser console and ensure all dependencies are installed
 
 ## Development
 
