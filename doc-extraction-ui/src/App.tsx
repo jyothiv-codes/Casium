@@ -25,7 +25,30 @@ const PASSPORT_FIELDS = [
   'country',
   'issue_date',
   'expiration_date'
-];
+] as const;
+
+const EAD_CARD_FIELDS = [
+  'card_number',
+  'category',
+  'card_expires_date',
+  'first_name',
+  'last_name'
+] as const;
+
+const DRIVERS_LICENSE_FIELDS = [
+  'license_number',
+  'first_name',
+  'last_name',
+  'date_of_birth',
+  'issue_date',
+  'expiration_date'
+] as const;
+
+// Define field types
+type PassportField = typeof PASSPORT_FIELDS[number];
+type EadCardField = typeof EAD_CARD_FIELDS[number];
+type DriversLicenseField = typeof DRIVERS_LICENSE_FIELDS[number];
+type DocumentField = PassportField | EadCardField | DriversLicenseField;
 
 function App() {
   const [documentUrl, setDocumentUrl] = useState<string | null>(null);
@@ -37,6 +60,20 @@ function App() {
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentDocType, setCurrentDocType] = useState<string>('');
+
+  // Get the appropriate fields list based on document type
+  const getFieldsForDocType = (docType: string): readonly string[] => {
+    switch(docType.toLowerCase()) {
+      case 'passport':
+        return PASSPORT_FIELDS;
+      case 'ead_card':
+        return EAD_CARD_FIELDS;
+      case 'driver_license':
+        return DRIVERS_LICENSE_FIELDS;
+      default:
+        return PASSPORT_FIELDS; // fallback to passport fields
+    }
+  };
 
   const fetchRecentDocuments = async () => {
     setError(null);
@@ -122,12 +159,14 @@ function App() {
       }
 
       // Create a complete set of fields with all expected fields
-      const existingFields = Object.entries(parsedFields).reduce((acc, [key, value]) => {
+      const existingFields = Object.entries(parsedFields).reduce<Record<string, string | null>>((acc, [key, value]) => {
         acc[key] = value === null ? null : String(value);
         return acc;
-      }, {} as Record<string, string | null>);
+      }, {});
 
-      const completeFields = PASSPORT_FIELDS.map(key => ({
+      const fieldsForType = getFieldsForDocType(documentType);
+
+      const completeFields = fieldsForType.map((key: string) => ({
         key,
         value: existingFields[key] || null
       }));
@@ -218,14 +257,17 @@ function App() {
       // Set the document type
       setCurrentDocType(doc.documentType);
 
+      // Get the appropriate fields list based on document type
+      const fieldsForType = getFieldsForDocType(doc.documentType);
+
       // Create a complete set of fields, including empty ones
-      const existingFields = doc.fields.reduce((acc, field) => {
+      const existingFields = doc.fields.reduce<Record<string, string | null>>((acc, field) => {
         acc[field.key] = field.value;
         return acc;
-      }, {} as Record<string, string | null>);
+      }, {});
 
       // Create the complete fields array with all expected fields
-      const completeFields = PASSPORT_FIELDS.map(key => ({
+      const completeFields = fieldsForType.map((key: string) => ({
         key,
         value: existingFields[key] || null
       }));
