@@ -132,9 +132,10 @@ function App() {
         value: existingFields[key] || null
       }));
 
+      // Use the actual filename from the server response
       const newDoc = {
         id: String(data.document_id),
-        name: data.filename || `Document ${recentDocs.length + 1}`,
+        name: selectedFile.name, // Use the actual file name
         url: documentUrl!,
         fields: completeFields,
         documentType
@@ -142,7 +143,16 @@ function App() {
 
       setFields(completeFields);
       setCurrentDocType(documentType);
-      setRecentDocs([newDoc, ...recentDocs]);
+      setRecentDocs(prevDocs => {
+        // Update the document if it already exists, otherwise add it
+        const existingDocIndex = prevDocs.findIndex(doc => doc.id === newDoc.id);
+        if (existingDocIndex !== -1) {
+          const updatedDocs = [...prevDocs];
+          updatedDocs[existingDocIndex] = newDoc;
+          return updatedDocs;
+        }
+        return [newDoc, ...prevDocs];
+      });
     } catch (err) {
       console.error(err);
       setError("Failed to extract fields.");
