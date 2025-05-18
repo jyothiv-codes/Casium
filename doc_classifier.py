@@ -174,6 +174,25 @@ def extract_fields_with_gemini(img_array: np.ndarray, doc_type: str) -> Dict[str
         logger.error(f"Field extraction error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Field extraction failed: {str(e)}")
 
+def convert_date_to_standard_format(date_str: str) -> str:
+    """Convert various date formats to YYYY-MM-DD."""
+    try:
+        # Try parsing with various formats
+        for fmt in [
+            "%d %b %Y",  # 03 Oct 1955
+            "%b %d %Y",  # Oct 03 1955
+            "%Y-%m-%d",  # Already in correct format
+            "%m/%d/%Y",  # 10/03/1955
+            "%d/%m/%Y",  # 03/10/1955
+        ]:
+            try:
+                return datetime.strptime(date_str, fmt).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        return date_str  # Return original if no format matches
+    except Exception:
+        return date_str  # Return original on any error
+
 @app.post("/classify-document", response_model=Dict[str, Any])
 async def classify_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
@@ -216,6 +235,12 @@ async def classify_document(file: UploadFile = File(...), db: Session = Depends(
                 field_data = {}
         else:
             field_data = fields.get("document_content", fields)
+
+        # Convert dates to standard format
+        date_fields = ["date_of_birth", "issue_date", "expiration_date", "card_expires_date"]
+        for field in date_fields:
+            if field in field_data and field_data[field]:
+                field_data[field] = convert_date_to_standard_format(field_data[field])
 
         logger.info(f"Creating document record with type: '{doc_type}'")
         doc_record = Document(
