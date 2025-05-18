@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import DocumentViewer from './components/DocumentViewer';
 import ExtractedFieldsPanel from './components/ExtractedFieldsPanel';
-import Sidebar from './components/Sidebar';
+import DocumentListItem from './components/DocumentListItem';
 import { v4 as uuidv4 } from 'uuid';
 
 // Add type definitions at the top
@@ -278,11 +278,27 @@ function App() {
       fontFamily: 'Arial, sans-serif',
       overflow: 'hidden'
     }}>
-      <Sidebar
-        documents={recentDocs}
-        onSelect={handleSelectRecent}
-        onExtractNew={handleExtractNew}
-      />
+      <div style={{ width: '300px', borderRight: '1px solid #ccc', padding: '1rem', overflowY: 'auto' }}>
+        <h2>Recent Documents</h2>
+        <button
+          onClick={handleExtractNew}
+          style={{
+            ...buttonStyle,
+            width: '100%',
+            marginBottom: '1rem'
+          }}
+        >
+          Extract Fields
+        </button>
+        {recentDocs.map((doc) => (
+          <DocumentListItem
+            key={doc.id}
+            id={doc.id}
+            name={doc.name}
+            onSelect={handleSelectRecent}
+          />
+        ))}
+      </div>
       <div style={{
         flex: 1,
         overflowY: 'auto',
