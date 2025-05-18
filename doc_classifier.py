@@ -17,6 +17,8 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy import create_engine
 from models import Base, Document, Field
 from sqlalchemy.sql import text
+from datetime import datetime
+import re
 
 # Load environment variables
 load_dotenv()
@@ -288,8 +290,56 @@ class FieldUpdateRequest(BaseModel):
     document_id: int
     key: str
     value: str
+
+# Add validation rules
+FIELD_VALIDATIONS = {
+    "date_of_birth": {
+        "pattern": r"^\d{4}-\d{2}-\d{2}$",
+        "validate": lambda value: bool(re.match(r"^\d{4}-\d{2}-\d{2}$", value)) and 
+                                datetime.strptime(value, "%Y-%m-%d") < datetime.now()
+    },
+    "issue_date": {
+        "pattern": r"^\d{4}-\d{2}-\d{2}$",
+        "validate": lambda value: bool(re.match(r"^\d{4}-\d{2}-\d{2}$", value))
+    },
+    "expiration_date": {
+        "pattern": r"^\d{4}-\d{2}-\d{2}$",
+        "validate": lambda value: bool(re.match(r"^\d{4}-\d{2}-\d{2}$", value)) and 
+                                datetime.strptime(value, "%Y-%m-%d") > datetime.now()
+    },
+    "full_name": {
+        "pattern": r"^[A-Za-z\s\-']+$",
+        "validate": lambda value: bool(re.match(r"^[A-Za-z\s\-']+$", value)) and len(value.strip()) >= 2
+    },
+    "country": {
+        "pattern": r"^[A-Za-z\s\-']+$",
+        "validate": lambda value: bool(re.match(r"^[A-Za-z\s\-']+$", value)) and len(value.strip()) >= 2
+    }
+}
+
+def validate_field_value(key: str, value: str) -> tuple[bool, Optional[str]]:
+    """Validate a field value based on its key."""
+    if key not in FIELD_VALIDATIONS:
+        return True, None
+    
+    validation = FIELD_VALIDATIONS[key]
+    try:
+        if validation["validate"](value):
+            return True, None
+        
+        if "date" in key:
+            return False, f"Invalid date format. Must be YYYY-MM-DD"
+        return False, f"Invalid format for {key}"
+    except ValueError as e:
+        return False, str(e)
+
 @app.put("/update-field")
 def update_field(data: FieldUpdateRequest, db: Session = Depends(get_db)):
+    # Validate the field value
+    is_valid, error_message = validate_field_value(data.key, data.value)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_message)
+    
     field = db.query(Field).filter_by(document_id=data.document_id, key=data.key).first()
     
     if field:
@@ -305,8 +355,12 @@ def update_field(data: FieldUpdateRequest, db: Session = Depends(get_db)):
         )
         db.add(field)
 
-    db.commit()
-    return {"message": "Field updated successfully"}
+    try:
+        db.commit()
+        return {"message": "Field updated successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to update field: {str(e)}")
 
 
 from fastapi import Query
