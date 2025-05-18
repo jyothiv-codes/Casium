@@ -65,7 +65,14 @@ passport_prompt = """Extract the fields from the passport image and return them 
     "issue_date": "...",
     "expiration_date": "..."
   }
-}"""
+}
+Notes:
+- The `full_name` should include all parts of the name as written on the passport.
+- Extract only the visible fields from the document.
+- Return all dates in ISO format as 4-digit year first: YYYY-MM-DD (e.g., 2024-03-01). Do not use any other format.
+- If a date format is ambiguous (e.g., 03/04/2024), infer the correct format using contextual clues such as the issuing country or document language.
+- Ensure the JSON matches the format above exactly. Do not add extra fields.
+"""
 
 driver_license_prompt = """Extract the fields from the driver's license image and return them in the following JSON format:
 {
@@ -78,9 +85,17 @@ driver_license_prompt = """Extract the fields from the driver's license image an
     "issue_date": "...",
     "expiration_date": "..."
   }
-}"""
+}
+Notes:
+- Clearly extract the first name and last name from the document.
+- If there is a middle name, include it in the `first_name` field.
+- Extract only the visible fields from the document.
+- Return all dates in ISO format as 4-digit year first: YYYY-MM-DD (e.g., 2024-03-01). Do not use any other format.
+- If a date format is ambiguous (e.g., 03/04/2024), infer the correct format using contextual clues such as the issuing country or document language.
+- Ensure the JSON matches the format above exactly. Do not add extra fields.
+"""
 
-ead_card_prompt = """Extract the fields from the image and return them in the following JSON format:
+ead_card_prompt = """Extract the fields from the EAD card image and return them in the following JSON format:
 {
   "document_type": "ead_card",
   "document_content": {
@@ -90,7 +105,17 @@ ead_card_prompt = """Extract the fields from the image and return them in the fo
     "first_name": "...",
     "last_name": "..."
   }
-}"""
+}
+
+Notes:
+- Card Number: Look for a long number at the top of the card (usually starts with 'SRC' or 'EAC' followed by numbers)
+- Category: Look for a 3-4 character code (e.g., 'C09', 'C09P') in a separate field
+- Card Expires Date: Look for 'CARD EXPIRES' or 'EXPIRES' followed by a date
+- Names: Extract from the name field, usually in the format 'LAST, FIRST MIDDLE'
+- Return all dates in ISO format as 4-digit year first: YYYY-MM-DD (e.g., 2024-03-01)
+- If a date format is ambiguous (e.g., 03/04/2024), infer the correct format using contextual clues
+- Extract only the visible fields from the document
+- Ensure the JSON matches the format above exactly. Do not add extra fields."""
 
 def extract_images_from_pdf(pdf_bytes: bytes) -> List[np.ndarray]:
     try:
@@ -148,13 +173,13 @@ def extract_fields_with_gemini(img_array: np.ndarray, doc_type: str) -> Dict[str
         prompts = {
             "passport": passport_prompt,
             "driver_license": driver_license_prompt,
-            "ead_card": ead_card_prompt
+            "ead_card": ead_card_prompt,
+            "unknown": "Extract key fields as JSON."
         }
 
-        prompt = prompts.get(doc_type, "Extract key fields as JSON.")
+        prompt = prompts.get(doc_type, prompts["unknown"])
         logger.info(f"Using prompt for document type '{doc_type}': {prompt}")
 
-        logger.info("Sending image to Gemini for field extraction...")
         response = model.generate_content([
             prompt,
             {"mime_type": "image/jpeg", "data": base64.b64encode(image_bytes).decode('utf-8')}
@@ -162,13 +187,24 @@ def extract_fields_with_gemini(img_array: np.ndarray, doc_type: str) -> Dict[str
         text = response.text.strip()
         logger.info(f"Raw Gemini field extraction response: {text}")
 
+        # Remove ```json and ``` wrapper if present
+        cleaned_text = re.sub(r'^```json\n|\n```$', '', text)
         try:
-            parsed_json = json.loads(text)
-            logger.info(f"Successfully parsed JSON response: {json.dumps(parsed_json, indent=2)}")
-            return parsed_json
+            parsed_data = json.loads(cleaned_text)
+            logger.info("Fields extracted successfully")
+            return parsed_data
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {str(e)}")
             logger.error(f"Raw text that failed to parse: {text}")
+            # Try to extract the JSON part from the response
+            json_match = re.search(r'\{[\s\S]*\}', text)
+            if json_match:
+                try:
+                    parsed_data = json.loads(json_match.group(0))
+                    logger.info("Successfully parsed JSON after cleanup")
+                    return parsed_data
+                except json.JSONDecodeError:
+                    pass
             return {"raw_output": text}
     except Exception as e:
         logger.error(f"Field extraction error: {str(e)}", exc_info=True)
@@ -221,20 +257,18 @@ async def classify_document(file: UploadFile = File(...), db: Session = Depends(
         fields = extract_fields_with_gemini(img_array, doc_type)
         logger.info("Fields extracted successfully")
 
-        field_data = {}
-        raw_json_output = ""
-
-        if "raw_output" in fields:
+        # Get the document content directly from the fields
+        field_data = fields.get("document_content", {})
+        if not field_data and "raw_output" in fields:
+            # If we have raw_output, try to parse it
             raw_json_output = fields["raw_output"]
             try:
                 cleaned = raw_json_output.replace("```json", "").replace("```", "").strip()
                 parsed = json.loads(cleaned)
-                field_data = parsed.get("document_content", parsed)
+                field_data = parsed.get("document_content", {})
             except Exception as e:
                 logger.error("Failed to parse raw_output:", exc_info=e)
                 field_data = {}
-        else:
-            field_data = fields.get("document_content", fields)
 
         # Convert dates to standard format
         date_fields = ["date_of_birth", "issue_date", "expiration_date", "card_expires_date"]
@@ -287,6 +321,7 @@ async def classify_document(file: UploadFile = File(...), db: Session = Depends(
             db.rollback()
             raise
 
+        # Add fields to database
         for key, value in field_data.items():
             if value is not None:
                 db.add(Field(
@@ -295,15 +330,8 @@ async def classify_document(file: UploadFile = File(...), db: Session = Depends(
                     value=str(value)
                 ))
 
-        if raw_json_output and not field_data:
-            db.add(Field(
-                document_id=doc_record.id,
-                key="raw_output",
-                value=raw_json_output
-            ))
-
         db.commit()
-
+        logger.info(f"Returning response with fields: {field_data}")
         return {
             "document_id": doc_record.id,
             "document_type": doc_type,
