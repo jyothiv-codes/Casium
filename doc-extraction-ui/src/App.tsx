@@ -111,14 +111,14 @@ function App() {
         try {
           const parsed = JSON.parse(cleaned);
           parsedFields = parsed.document_content ?? parsed;
-          documentType = data.document_type || parsed.document_type || 'Passport';
+          documentType = data.document_type || parsed.document_type || 'Unknown';
         } catch (e) {
           console.error("JSON parse error:", e);
           parsedFields = { raw_output: raw }; // fallback
         }
       } else {
         parsedFields = data.fields.document_content ?? data.fields;
-        documentType = data.document_type || 'Passport';
+        documentType = data.document_type || 'Unknown';
       }
 
       // Create a complete set of fields with all expected fields
@@ -132,20 +132,24 @@ function App() {
         value: existingFields[key] || null
       }));
 
-      const newDoc = {
-        id: String(data.document_id),
-        name: data.filename || `Document ${recentDocs.length + 1}`,
-        url: documentUrl!,
-        fields: completeFields,
-        documentType
-      };
+      // Only add to recentDocs if we have a document_id (not unknown type)
+      if (data.document_id) {
+        const newDoc = {
+          id: String(data.document_id),
+          name: selectedFile.name,
+          url: documentUrl!,
+          fields: completeFields,
+          documentType
+        };
+        
+        setRecentDocs(prevDocs => [newDoc, ...prevDocs]);
+      }
 
       setFields(completeFields);
       setCurrentDocType(documentType);
-      setRecentDocs([newDoc, ...recentDocs]);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to extract fields.");
+    } catch (error) {
+      console.error("Extraction error:", error);
+      setError("Failed to extract fields. Please try again.");
     } finally {
       setLoading(false);
     }
