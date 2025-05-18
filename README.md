@@ -120,6 +120,8 @@ python -m uvicorn doc_classifier:app --reload
 ```
 The server will be available at `http://127.0.0.1:8000`
 
+Create a folder in the root directory of the project `input` and add the data folders downloaded from Google Drive
+
 ### Frontend Setup
 ```bash
 # Navigate to frontend directory
