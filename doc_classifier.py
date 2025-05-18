@@ -8,7 +8,7 @@ from PIL import Image
 import pdf2image
 import tempfile
 import numpy as np
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 import logging
 import google.generativeai as genai
@@ -16,6 +16,7 @@ import json
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy import create_engine
 from models import Base, Document, Field
+from sqlalchemy.sql import text
 
 # Load environment variables
 load_dotenv()
@@ -103,25 +104,38 @@ def extract_images_from_pdf(pdf_bytes: bytes) -> List[np.ndarray]:
 
 def process_image_with_gemini(img_array: np.ndarray) -> str:
     try:
+        logger.info("Converting image for Gemini processing...")
         pil_img = Image.fromarray(img_array).convert("RGB")
         buffer = io.BytesIO()
         pil_img.save(buffer, format="JPEG")
         image_bytes = buffer.getvalue()
+        logger.info(f"Image converted, size: {len(image_bytes)} bytes")
 
         model = genai.GenerativeModel("gemini-1.5-flash")
+        logger.info("Sending image to Gemini for classification...")
+        
+        classification_prompt = "You are an immigration document classifier. Only reply with one of: passport, driver_license, or ead_card."
+        logger.info(f"Using classification prompt: {classification_prompt}")
+        
         response = model.generate_content([
-            "You are an immigration document classifier. Only reply with one of: passport, driver_license, or ead_card.",
+            classification_prompt,
             {"mime_type": "image/jpeg", "data": base64.b64encode(image_bytes).decode('utf-8')}
         ])
-        document_type = response.text.strip().lower()
-        logger.info(f"Gemini response: {document_type}")
-        return document_type if document_type in DOCUMENT_TYPES else "unknown"
+        raw_response = response.text.strip()
+        logger.info(f"Raw Gemini classification response: '{raw_response}'")
+        
+        document_type = raw_response.lower()
+        final_type = document_type if document_type in DOCUMENT_TYPES else "unknown"
+        logger.info(f"Final document type determined: '{final_type}' (original response: '{raw_response}')")
+        
+        return final_type
     except Exception as e:
-        logger.error(f"Gemini classification error: {str(e)}")
+        logger.error(f"Document classification error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Document classification failed: {str(e)}")
 
 def extract_fields_with_gemini(img_array: np.ndarray, doc_type: str) -> Dict[str, Any]:
     try:
+        logger.info(f"Starting field extraction for document type: {doc_type}")
         pil_img = Image.fromarray(img_array).convert("RGB")
         buffer = io.BytesIO()
         pil_img.save(buffer, format="JPEG")
@@ -136,25 +150,32 @@ def extract_fields_with_gemini(img_array: np.ndarray, doc_type: str) -> Dict[str
         }
 
         prompt = prompts.get(doc_type, "Extract key fields as JSON.")
+        logger.info(f"Using prompt for document type '{doc_type}': {prompt}")
 
+        logger.info("Sending image to Gemini for field extraction...")
         response = model.generate_content([
             prompt,
             {"mime_type": "image/jpeg", "data": base64.b64encode(image_bytes).decode('utf-8')}
         ])
         text = response.text.strip()
-        logger.info(f"Gemini field response: {text}")
+        logger.info(f"Raw Gemini field extraction response: {text}")
 
         try:
-            return json.loads(text)
-        except Exception:
+            parsed_json = json.loads(text)
+            logger.info(f"Successfully parsed JSON response: {json.dumps(parsed_json, indent=2)}")
+            return parsed_json
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON response: {str(e)}")
+            logger.error(f"Raw text that failed to parse: {text}")
             return {"raw_output": text}
     except Exception as e:
-        logger.error(f"Gemini field extraction error: {str(e)}")
+        logger.error(f"Field extraction error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Field extraction failed: {str(e)}")
 
 @app.post("/classify-document", response_model=Dict[str, Any])
 async def classify_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
+        logger.info(f"Starting document classification for file: {file.filename}")
         file_content = await file.read()
         file_bytes = bytes(file_content)
         file_extension = os.path.splitext(file.filename)[1].lower()
@@ -172,8 +193,12 @@ async def classify_document(file: UploadFile = File(...), db: Session = Depends(
                 logger.exception("Image file error")
                 raise HTTPException(status_code=400, detail=f"Invalid image file: {repr(e)}")
 
+        logger.info("Starting Gemini document classification...")
         doc_type = process_image_with_gemini(img_array)
+        logger.info(f"Document classified as type: '{doc_type}'")
+        
         fields = extract_fields_with_gemini(img_array, doc_type)
+        logger.info("Fields extracted successfully")
 
         field_data = {}
         raw_json_output = ""
@@ -190,14 +215,42 @@ async def classify_document(file: UploadFile = File(...), db: Session = Depends(
         else:
             field_data = fields.get("document_content", fields)
 
+        logger.info(f"Creating document record with type: '{doc_type}'")
         doc_record = Document(
             filename=file.filename,
             content_type=file.content_type,
-            file_blob=file_bytes
+            file_blob=file_bytes,
+            document_type=doc_type
         )
+        
+        # Explicitly set document type again to ensure it's set
+        doc_record.document_type = doc_type
+        
+        logger.info("About to add document to database session")
         db.add(doc_record)
-        db.commit()
-        db.refresh(doc_record)
+        logger.info("About to commit database transaction")
+        try:
+            db.commit()
+            logger.info(f"Database commit complete. Document ID: {doc_record.id}, Type: '{doc_record.document_type}'")
+            
+            # Verify the document was saved with correct type
+            db.refresh(doc_record)
+            saved_doc = db.query(Document).filter(Document.id == doc_record.id).first()
+            if saved_doc.document_type != doc_type:
+                logger.error(f"Document type mismatch - Expected: '{doc_type}', Got: '{saved_doc.document_type}'")
+                # Force update if needed
+                db.execute(
+                    text("UPDATE documents SET document_type = :type WHERE id = :id"),
+                    {"type": doc_type, "id": doc_record.id}
+                )
+                db.commit()
+                logger.info("Forced document type update complete")
+            else:
+                logger.info(f"Document type verified correct in database: '{saved_doc.document_type}'")
+        except Exception as e:
+            logger.error(f"Error during database commit: {str(e)}")
+            db.rollback()
+            raise
 
         for key, value in field_data.items():
             if value is not None:
@@ -268,6 +321,7 @@ class DocumentOut(BaseModel):
     id: int
     filename: str
     content_type: Optional[str]
+    document_type: Optional[str]
     fields: List[FieldOut] = []
 
     class Config:

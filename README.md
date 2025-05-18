@@ -4,10 +4,35 @@ A modern React and FastAPI application for viewing and editing extracted documen
 
 ## Features
 
+### Supported Document Types
+- **Passport**
+  - Full Name
+  - Date of Birth
+  - Country
+  - Issue Date
+  - Expiration Date
+
+- **Driver's License**
+  - License Number
+  - First Name
+  - Last Name
+  - Date of Birth
+  - Issue Date
+  - Expiration Date
+
+- **EAD Card**
+  - Card Number
+  - Category
+  - Card Expires Date
+  - First Name
+  - Last Name
+
 ### Document Field Editing
 - Interactive field editing interface with validation
 - Real-time field updates
 - Responsive UI with modern styling
+- Automatic document type detection and display
+- Support for multiple document types (passport, driver's license, EAD card)
 
 ### Field Validation Rules
 - **Date Fields**
@@ -39,17 +64,21 @@ A modern React and FastAPI application for viewing and editing extracted documen
 - Modern React Hooks (useState)
 - Styled components using inline styles
 - Type-safe field validation
+- Document type-specific field handling
 
 ### Backend
 - FastAPI (Python)
 - Uvicorn server
 - RESTful API endpoints for document operations
+- SQLite database with SQLAlchemy ORM
+- Google's Gemini AI for document classification and field extraction
 
 ## API Endpoints
 
 - `GET /documents` - List all documents
 - `GET /documents/{id}` - Fetch a specific document
 - `PUT /update-field` - Update document field values
+- `POST /classify-document` - Upload and classify a new document
 
 ## Getting Started
 
@@ -58,10 +87,19 @@ A modern React and FastAPI application for viewing and editing extracted documen
 # Install dependencies
 pip install -r requirements.txt
 
+# Initialize the database (first time setup)
+python init_db.py
+
 # Start the server
 python -m uvicorn doc_classifier:app --reload
 ```
 The server will be available at `http://127.0.0.1:8000`
+
+### Environment Variables
+Create a `.env` file in the root directory with:
+```
+GOOGLE_API_KEY=your_gemini_api_key_here
+```
 
 ### Frontend Setup
 ```bash

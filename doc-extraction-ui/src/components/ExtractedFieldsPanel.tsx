@@ -53,10 +53,11 @@ const FIELD_VALIDATIONS: Record<string, FieldValidation> = {
 
 type Props = {
   fields: ExtractedField[];
+  documentType: string;
   onUpdateField?: (index: number, newValue: string) => void;
 };
 
-const ExtractedFieldsPanel: React.FC<Props> = ({ fields, onUpdateField }) => {
+const ExtractedFieldsPanel: React.FC<Props> = ({ fields, documentType, onUpdateField }) => {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [tempValue, setTempValue] = useState<string>("");
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -99,7 +100,18 @@ const ExtractedFieldsPanel: React.FC<Props> = ({ fields, onUpdateField }) => {
       background: '#fefefe',
       borderLeft: '1px solid #ccc'
     }}>
-      <h2>Extracted Fields</h2>
+      <div style={{
+        marginBottom: '1.5rem',
+        padding: '0.75rem',
+        background: '#f8f9fa',
+        borderRadius: '4px',
+        border: '1px solid #e9ecef'
+      }}>
+        <h2 style={{ margin: '0', fontSize: '1.25rem', color: '#495057' }}>
+          Document Type: <span style={{ color: '#0056b3' }}>{documentType}</span>
+        </h2>
+      </div>
+      <h3 style={{ marginBottom: '1rem' }}>Extracted Fields</h3>
       {fields.length === 0 ? (
         <p>No fields extracted yet.</p>
       ) : (
