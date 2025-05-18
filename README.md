@@ -96,6 +96,7 @@ A modern React and FastAPI application for viewing and editing extracted documen
 - Node.js 16 or higher
 - npm or yarn
 - Google Cloud account for Gemini API access
+- SQLite (DB Browser for SQLite is helpful)
 
 ### Backend Setup
 ```bash
