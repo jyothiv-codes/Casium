@@ -1,6 +1,6 @@
 # Casium - Document Field Extraction and Editing Interface
 
-A modern React application for viewing and editing extracted document fields, with a focus on passport document validation.
+A modern React and FastAPI application for viewing and editing extracted document fields, with a focus on passport document validation. The application provides a clean, intuitive interface for managing document data with real-time validation and updates.
 
 ## Features
 
@@ -53,12 +53,28 @@ A modern React application for viewing and editing extracted document fields, wi
 
 ## Getting Started
 
-1. Start the backend server:
+### Backend Setup
 ```bash
-python3 -m uvicorn doc_classifier:app --reload
-```
+# Install dependencies
+pip install -r requirements.txt
 
-2. The server will be available at `http://127.0.0.1:8000`
+# Start the server
+python -m uvicorn doc_classifier:app --reload
+```
+The server will be available at `http://127.0.0.1:8000`
+
+### Frontend Setup
+```bash
+# Navigate to frontend directory
+cd doc-extraction-ui
+
+# Install dependencies
+npm install
+
+# Start development server
+npm start
+```
+The application will be available at `http://localhost:3000`
 
 ## Development
 
@@ -76,3 +92,7 @@ When contributing to this project, please ensure that:
 2. UI changes maintain the existing style guidelines
 3. Type safety is maintained throughout the application
 4. Changes are tested with the backend API
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
